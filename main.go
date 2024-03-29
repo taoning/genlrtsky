@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -138,21 +137,6 @@ func printVersion() {
 	return
 }
 
-func generateUniformSamples(step int) ([]float64, []float64) {
-	if 90%step != 0 {
-		panic("Angluar resolution not divisive by 90")
-	}
-	cos_thetas := make([]float64, 0, 90/step)
-	for i := 0; i < 90; i += step {
-		cos_thetas = append(cos_thetas, -math.Cos(float64(i)*(math.Pi/180.0)))
-	}
-	phis := make([]float64, 0, 360/step)
-	for i := 0; i < 360; i += step {
-		phis = append(phis, float64(i))
-	}
-	return cos_thetas, phis
-}
-
 func getSolarAngle(dt Datetime, lc Location) (string, string) {
 	cmd := exec.Command("zenith", "-y", strconv.Itoa(dt.year),
 		"-a", strconv.FormatFloat(lc.latitude, 'f', -1, 64),
@@ -238,43 +222,16 @@ func scolor2scolr(scol [20]float64, ncs int) [21]uint8 {
 	return sclr
 }
 
-// putbinary is a function to write small objects to an io.Writer like a file.
-func putbinary(w io.Writer, data interface{}) (int, error) {
-        buf := new(bytes.Buffer)
-        if err := binary.Write(buf, binary.LittleEndian, data); err != nil {
-                return 0, err
-        }
-        bytes := buf.Bytes()
-
-        // Use io.Writer's Write method directly if large object
-        if len(bytes) > 128 {
-                return w.Write(bytes)
-        }
-
-        // Write byte-by-byte for small objects
-        count := 0
-        for _, b := range bytes {
-                if _, err := w.Write([]byte{b}); err != nil {
-                        return count, err
-                }
-                count++
-        }
-        return count, nil
-}
 
 func worker(x, y int, input InputParams, tmpl *template.Template, wg *sync.WaitGroup, concurrencyLimits chan struct{}, results chan<- Result) {
-        // Perform CPU-heavy `uvspec` work...
-        // (Your operations here)
 	defer wg.Done()
 	defer func() { <-concurrencyLimits }() // Release the "slot"
 
-        // Simulated result and error
         var result Result
 
         result.X = x
         result.Y = y
 
-        // Imagine `myProcessingFunc` is your processing function that calls `uvspec`
         result.Data, result.Err = compute(x, y, input, tmpl)
 
         // Send the result to the results channel
@@ -311,9 +268,7 @@ func compute(x, y int, input InputParams, tmpl *template.Template) ([NSSAMP+1]ui
 	cmd.Stderr = &stderr
 	cmd.Stdout = &out
 
-	// fmt.Println(cmd.Args)
 	err = cmd.Run()
-	// fmt.Fprintln(os.Stderr, stderr.String())
 	if err != nil {
 		panic(err)
 	}
@@ -384,11 +339,9 @@ mc_vroom on`
 	longitude := flag.Float64("o", 122.0, "longitude")
 	standardMeridian := flag.Int("m", 120, "Standard meridian, west positive")
 	version := flag.Bool("version", false, "Print version")
-	// altitude := flag.Float64("altitude", 0.0, "Altitude")
 	albedo := flag.Float64("albedo", 0.2, "Albedo")
 	aerosol := flag.String("aerosol", "continental_average", "Standard aerosol profile name")
 	// cloudCover := flag.String("cloud cover", "continental_average", "Standard aerosol profile name")
-	// step := flag.Int("step", 3, "Angular step")
 
 	input.GroundAlbedo = *albedo
 	input.AerosolProfileName = *aerosol
@@ -442,8 +395,6 @@ mc_vroom on`
 	input.SolarZenith = solarZenith
 	input.SolarAzimuth = solarAzimuth
 
-	// umu, phis := generateUniformSamples(*step)
-
 	// Create a temp file to store solar and wavelength data
 	wavelengthGridFile, err := os.CreateTemp("", "lambda.dat")
 	panicError(err)
@@ -470,8 +421,6 @@ mc_vroom on`
 
 	// Limit the number of concurrent goroutines to the number of processor cores
         numCores := runtime.NumCPU()
-	// numCores = 1
-	// numCores *= 2
         concurrencyLimit := make(chan struct{}, numCores) // Semaphore-like channel
 
         for y := 0; y < YRES; y++ {
@@ -488,15 +437,11 @@ mc_vroom on`
                 close(results)
         }()
 
-	fmt.Println("Done with workers...")
-
         orderedResults := make([][]Result, YRES)
         for y := range orderedResults {
                 orderedResults[y] = make([]Result, XRES)
         }
 	
-	fmt.Println("Assigning resutls...")
-
         for res := range results {
 		fmt.Println(res.X, res.Y)
                 if res.Err != nil {
@@ -506,15 +451,11 @@ mc_vroom on`
                 orderedResults[res.Y][res.X] = res
         }
 
-	fmt.Println("Writing results...")
-
-        // Assuming you want to accumulate all outputs into `hsrf`
-        var hsr bytes.Buffer
 
         // Write the results in `hsrf` in order
+        var hsr bytes.Buffer
         for y := range orderedResults {
                 for x := range orderedResults[y] {
-			fmt.Println(x, y)
                         if res := orderedResults[y][x]; res.Err == nil {
                                 for _, value := range res.Data {
                                         if err := binary.Write(&hsr, binary.LittleEndian, value); err != nil {
@@ -525,10 +466,6 @@ mc_vroom on`
                 }
         }
 
-        // Now `hsrf` contains the ordered results
-        // (You'll want to write these to a file or process further as needed)
-
-	// hsrf, err := os.OpenFile("sky.hsr", os.O_CREATE|os.O_WRONLY, 0644)
 	hsrf, err := os.Create("sky.hsr")
 	defer hsrf.Close()
 	hsrf.WriteString("#?RADIANCE\n")
@@ -539,150 +476,9 @@ mc_vroom on`
 	hsrf.WriteString(resStr)
 	hsrf.Write(hsr.Bytes())
 
-	// for y := 0; y < YRES; y++ {
-	// 	for x := 0; x < XRES; x++ {
-	// 		fmt.Println(x, y)
-	// 		loc0, loc1 := pix2loc(XRES, YRES, x, y)
-	// 		umu, phi := viewray(loc0, loc1)
-	//
-	// 		var templateBuffer bytes.Buffer
-	// 		input.CosTheta = umu
-	// 		input.Phi = phi
-	// 		err = tmpl.Execute(&templateBuffer, input)
-	// 		if err != nil {
-	// 			panic(err)
-	// 		}
-	// 		inputStr := templateBuffer.String()
-	//
-	// 		tdir, err := os.MkdirTemp("", "")
-	// 		if err != nil {
-	// 			panic(err)
-	// 		}
-	// 		defer os.RemoveAll(tdir)
-	//
-	// 		// fmt.Println(inputStr)
-	// 		cmd := exec.Command("uvspec")
-	// 		cmd.Stdin = bytes.NewBufferString(inputStr)
-	// 		cmd.Dir = tdir
-	//
-	// 		// Capture the output
-	// 		var stderr, out bytes.Buffer
-	// 		cmd.Stderr = &stderr
-	// 		cmd.Stdout = &out
-	//
-	// 		// fmt.Println(cmd.Args)
-	// 		err = cmd.Run()
-	// 		// fmt.Fprintln(os.Stderr, stderr.String())
-	// 		if err != nil {
-	// 			fmt.Fprintln(os.Stderr, stderr.String())
-	// 			return
-	// 		}
-	// 		res, err := os.ReadFile(filepath.Join(tdir, "mc.rad.spc"))
-	// 		if err != nil {
-	// 			panic(err)
-	// 		}
-	// 		rows := strings.Split(string(res), "\n")
-	// 		scolor := [20]float64{}
-	// 		for i, row := range rows {
-	// 			if row == "" {
-	// 				continue
-	// 			}
-	// 			fields := strings.Fields(row)
-	// 			value, err := strconv.ParseFloat(fields[4], 64)
-	// 			if err != nil {
-	// 				panic(err)
-	// 			}
-	// 			scolor[i] = value * WVLSPAN / 1000  // mW to W
-	// 		}
-	// 		sclr := scolor2scolr(scolor, NSSAMP)
-	// 		for _, value := range sclr {
-	// 			err = binary.Write(hsrf, binary.LittleEndian, value)
-	// 			if err != nil {
-	// 				panic(err)
-	// 			}
-	// 		}
-	// 	}
-	// }
-
-	// dni := [NSSAMP]string{}
-	// uu := [NSSAMP * 121 * 31]string{}
-	// rows := strings.Split(out.String(), "\n")
-	// for index, row := range rows {
-	// 	if row == "" {
-	// 		continue
-	// 	}
-	// 	fields := strings.Fields(row)
-	// 	fmt.Println(len(fields))
-	// 	dni[index] = fields[1]
-	// 	for index2, value2 := range fields[3:] {
-	// 		idx := index2 * NSSAMP + index
-	// 		uu[idx] = value2
-	// 	}
-	// }
-	//
-	// datFile, err := os.Create("res.dat")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// defer datFile.Close()
-	// datFile.WriteString("3\n")
-	// datFile.WriteString("0 360 121\n")
-	// datFile.WriteString("0 90 31\n")
-	// datFile.WriteString("380 780 20\n")
-	// for _, value := range uu {
-	// 	datFile.WriteString(value + "\n")
-	// }
-
-	// numWavelengths := 20
-	// resultsChan := make(chan string, numWavelengths) // Buffered channel
-	// var wg sync.WaitGroup
-
-	// for i := 390; i <= 770; i += 20 {
-	// 	// wg.Add(1)
-	//
-	// 	// go func(wavelength int) {
-	// 		defer wg.Done()
-	// 		input += "wavelength " + strconv.Itoa(wavelength) + "\n"
-	// 		fmt.Println(input)
-	// 		cmd := exec.Command("uvspec")
-	// 		cmd.Stdin = bytes.NewBufferString(input)
-	//
-	// 		// Capture the output
-	// 		var stderr, out bytes.Buffer
-	// 		cmd.Stdout = &out
-	// 		cmd.Stderr = &stderr
-	//
-	// 		fmt.Println(cmd.Args)
-	// 		// Start and wait for the command to finish
-	// 		err := cmd.Run()
-	// 		if err != nil {
-	// 			fmt.Fprintln(os.Stderr, stderr.String())
-	// 			panic(err)
-	// 		}
-	// 		resultsChan <- out.String()
-	// 	}(i)
-	//
-	// 	// Print the output from the command
-	// 	// fmt.Println("Command output:", out.String())
-	// }
-
-	// Start a collector goroutine
-	// go func() {
-	// 	wg.Wait()
-	// 	close(resultsChan)
-	// }()
-
-	// Collect the ordered results
-	// var results []string
-	// for r := range resultsChan {
-	// 	nums := strings.Fields(r)
-	// 	fmt.Println(nums[:8])
-	// 	// results = append(results, r)
-	// }
-
-	// fmt.Println("Results:")
-	// for _, r := range results {
-	// 	fmt.Println(r)
-	// }
-
+	radf, err := os.Create("sky.rad")
+	defer radf.Close()
+	radf.WriteString("void specpict skyfunc 9 noop sky.hsr fisheye.cal fish_u fish_v -rx 90 -rz 90 0 0\n")
+	radf.WriteString("skyfunc glow skyglow 0 0 4 1 1 1 0\n")
+	radf.WriteString("skyglow source sky 0 0 4 0 0 1 180\n")
 }
