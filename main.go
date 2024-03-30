@@ -309,6 +309,7 @@ umu {{.CosTheta}}
 phi {{.Phi}}
 wavelength_grid_file {{.WavelengthGridFile}}
 mol_abs_param crs
+mc_spherical 1D
 mc_vroom on`
 
 	tmpl, err := template.New("input").Parse(inputTemplate)
