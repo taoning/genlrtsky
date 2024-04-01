@@ -13,15 +13,15 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"text/template"
 	"sync"
+	"text/template"
 )
 
 // Manuanlly defined constants
 const NSSAMP = 20
-const WVLSPAN = 400  // Wavelength span in nm 780 - 380
-const XRES = 32
-const YRES = 32
+const WVLSPAN = 400 // Wavelength span in nm 780 - 380
+const XRES = 64
+const YRES = 64
 
 type InputParams struct {
 	LibPath            string
@@ -51,11 +51,10 @@ type Location struct {
 }
 
 type Result struct {
-        X, Y int
-        Data [NSSAMP+1]uint8 // Data to be written to hsrf
+	X, Y int
+	Data [NSSAMP + 1]uint8 // Data to be written to hsrf
 	Err  error
 }
-
 
 func panicError(e error) {
 	if e != nil {
@@ -118,6 +117,33 @@ func parseMinute(str string) (int, error) {
 	return minutes, nil
 }
 
+func parseAerosolProfile(str string) (string, error) {
+	switch str {
+	case "ca":
+		return "continental_average", nil
+	case "cc":
+		return "continental_clean", nil
+	case "cp":
+		return "continental_polluted", nil
+	case "mc":
+		return "maritime_clear.dat", nil
+	case "mt":
+		return "maritime_tropical.dat", nil
+	case "mp":
+		return "maritime_polluted.dat", nil
+	case "a":
+		return "antarctic", nil
+	case "u":
+		return "urban", nil
+	case "d":
+		return "desert", nil
+	case "ds":
+		return "desert_spheroids", nil
+	default:
+		return "", errors.New("Invalid aerosol profile, use one of these: ca, cc, cp, mc, mt, mp, a, u, d, ds")
+	}
+}
+
 func printVersion() {
 	fmt.Println("genlrtsky v0.1")
 
@@ -134,7 +160,7 @@ func printVersion() {
 	if err != nil {
 		fmt.Println("zenith not found")
 	}
-	return
+	os.Exit(0)
 }
 
 func getSolarAngle(dt Datetime, lc Location) (string, string) {
@@ -194,51 +220,50 @@ func viewray(x float64, y float64) (float64, float64) {
 
 func scolor2scolr(scol [20]float64, ncs int) [21]uint8 {
 	const COLXS uint8 = 128
-        var p float64
+	var p float64
 	sclr := [21]uint8{}
 
-        // Find the largest value in scol
-        p = scol[0]
-        for i := 1; i < ncs; i++ {
-                if scol[i] > p {
-                        p = scol[i]
-                }
-        }
-        if p > 1e-32 {
-                frac, exp := math.Frexp(p)
-                p = frac * 256.0 / p // Ensure this isn't zero by checking `p` and `frac`
-                sclr[ncs] = uint8(exp) + COLXS
-                for i := 0; i < ncs; i++ {
-                        if scol[i] > 0 {
-                                sclr[i] = uint8(scol[i] * p)
-                        }
-                }
-        } else {
-                // Fill sclr with zeros if max value is not significant
-                for i := range sclr {
-                        sclr[i] = 0
-                }
-        }
+	// Find the largest value in scol
+	p = scol[0]
+	for i := 1; i < ncs; i++ {
+		if scol[i] > p {
+			p = scol[i]
+		}
+	}
+	if p > 1e-32 {
+		frac, exp := math.Frexp(p)
+		p = frac * 256.0 / p // Ensure this isn't zero by checking `p` and `frac`
+		sclr[ncs] = uint8(exp) + COLXS
+		for i := 0; i < ncs; i++ {
+			if scol[i] > 0 {
+				sclr[i] = uint8(scol[i] * p)
+			}
+		}
+	} else {
+		// Fill sclr with zeros if max value is not significant
+		for i := range sclr {
+			sclr[i] = 0
+		}
+	}
 	return sclr
 }
-
 
 func worker(x, y int, input InputParams, tmpl *template.Template, wg *sync.WaitGroup, concurrencyLimits chan struct{}, results chan<- Result) {
 	defer wg.Done()
 	defer func() { <-concurrencyLimits }() // Release the "slot"
 
-        var result Result
+	var result Result
 
-        result.X = x
-        result.Y = y
+	result.X = x
+	result.Y = y
 
-        result.Data, result.Err = compute(x, y, input, tmpl)
+	result.Data, result.Err = compute(x, y, input, tmpl)
 
-        // Send the result to the results channel
-        results <- result
+	// Send the result to the results channel
+	results <- result
 }
 
-func compute(x, y int, input InputParams, tmpl *template.Template) ([NSSAMP+1]uint8, error) {
+func compute(x, y int, input InputParams, tmpl *template.Template) ([NSSAMP + 1]uint8, error) {
 
 	loc0, loc1 := pix2loc(XRES, YRES, x, y)
 	umu, phi := viewray(loc0, loc1)
@@ -287,7 +312,7 @@ func compute(x, y int, input InputParams, tmpl *template.Template) ([NSSAMP+1]ui
 		if err != nil {
 			panic(err)
 		}
-		scolor[i] = value * WVLSPAN / 1000  // mW to W
+		scolor[i] = value * WVLSPAN / 1000 // mW to W
 	}
 	sclr := scolor2scolr(scolor, NSSAMP)
 	fmt.Println(x, y)
@@ -295,7 +320,6 @@ func compute(x, y int, input InputParams, tmpl *template.Template) ([NSSAMP+1]ui
 }
 
 func main() {
-
 
 	inputTemplate := `data_files_path {{.LibPath}} 
 source solar {{.SolFile}}
@@ -340,12 +364,13 @@ mc_vroom on`
 	longitude := flag.Float64("o", 122.0, "longitude")
 	standardMeridian := flag.Int("m", 120, "Standard meridian, west positive")
 	version := flag.Bool("version", false, "Print version")
-	albedo := flag.Float64("albedo", 0.2, "Albedo")
-	aerosol := flag.String("aerosol", "continental_average", "Standard aerosol profile name")
+	albedo := flag.Float64("g", 0.2, "Albedo")
+	aerosolProfile := flag.String("ap", "continental_average", "Standard aerosol profile name")
+	prefix := flag.String("p", "Default", "Output file prefix")
 	// cloudCover := flag.String("cloud cover", "continental_average", "Standard aerosol profile name")
 
 	input.GroundAlbedo = *albedo
-	input.AerosolProfileName = *aerosol
+	input.AerosolProfileName = *aerosolProfile
 
 	flag.Parse()
 
@@ -365,7 +390,7 @@ mc_vroom on`
 	// Make sure we got the first three positional arguments.
 	if len(positionalArgs) < 4 {
 		fmt.Fprintf(os.Stderr, "Usage: genlrtsky month day hour minute [options]\n")
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 	month, err := parseMonth(positionalArgs[0])
@@ -421,53 +446,54 @@ mc_vroom on`
 	wg := &sync.WaitGroup{}
 
 	// Limit the number of concurrent goroutines to the number of processor cores
-        numCores := runtime.NumCPU()
-        concurrencyLimit := make(chan struct{}, numCores) // Semaphore-like channel
+	numCores := runtime.NumCPU()
+	concurrencyLimit := make(chan struct{}, numCores) // Semaphore-like channel
 
-        for y := 0; y < YRES; y++ {
-                for x := 0; x < XRES; x++ {
-                        concurrencyLimit <- struct{}{} // Acquire a "slot"
-                        wg.Add(1)
-                        go worker(x, y, input, tmpl, wg, concurrencyLimit, results)
-                }
-        }
+	for y := 0; y < YRES; y++ {
+		for x := 0; x < XRES; x++ {
+			concurrencyLimit <- struct{}{} // Acquire a "slot"
+			wg.Add(1)
+			go worker(x, y, input, tmpl, wg, concurrencyLimit, results)
+		}
+	}
 
-        // Ensure all workers are finished before closing the results channel
-        go func() {
-                wg.Wait()
-                close(results)
-        }()
+	// Ensure all workers are finished before closing the results channel
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
 
-        orderedResults := make([][]Result, YRES)
-        for y := range orderedResults {
-                orderedResults[y] = make([]Result, XRES)
-        }
-	
-        for res := range results {
+	orderedResults := make([][]Result, YRES)
+	for y := range orderedResults {
+		orderedResults[y] = make([]Result, XRES)
+	}
+
+	for res := range results {
 		fmt.Println(res.X, res.Y)
-                if res.Err != nil {
-                        fmt.Printf("Error processing (%d, %d): %v\n", res.X, res.Y, res.Err)
-                        continue
-                }
-                orderedResults[res.Y][res.X] = res
-        }
+		if res.Err != nil {
+			fmt.Printf("Error processing (%d, %d): %v\n", res.X, res.Y, res.Err)
+			continue
+		}
+		orderedResults[res.Y][res.X] = res
+	}
 
+	// Write the results in `hsrf` in order
+	var hsr bytes.Buffer
+	for y := range orderedResults {
+		for x := range orderedResults[y] {
+			if res := orderedResults[y][x]; res.Err == nil {
+				for _, value := range res.Data {
+					if err := binary.Write(&hsr, binary.LittleEndian, value); err != nil {
+						panic(err)
+					}
+				}
+			}
+		}
+	}
 
-        // Write the results in `hsrf` in order
-        var hsr bytes.Buffer
-        for y := range orderedResults {
-                for x := range orderedResults[y] {
-                        if res := orderedResults[y][x]; res.Err == nil {
-                                for _, value := range res.Data {
-                                        if err := binary.Write(&hsr, binary.LittleEndian, value); err != nil {
-                                                panic(err)
-                                        }
-                                }
-                        }
-                }
-        }
-
-	hsrf, err := os.Create("sky.hsr")
+	outRad := *prefix + "sky.rad"
+	outHsr := *prefix + "sky.hsr"
+	hsrf, err := os.Create(outHsr)
 	defer hsrf.Close()
 	hsrf.WriteString("#?RADIANCE\n")
 	hsrf.WriteString("NCOMP=20\n")
@@ -477,9 +503,10 @@ mc_vroom on`
 	hsrf.WriteString(resStr)
 	hsrf.Write(hsr.Bytes())
 
-	radf, err := os.Create("sky.rad")
+	radf, err := os.Create(outRad)
 	defer radf.Close()
-	radf.WriteString("void specpict skyfunc 9 noop sky.hsr fisheye.cal fish_u fish_v -rx 90 -rz 90 0 0\n")
+	skyfuncStr := fmt.Sprintf("void specpict skyfunc 9 noop %s fisheye.cal fish_u fish_v -rx 90 -rz 90 0 0\n", outHsr)
+	radf.WriteString(skyfuncStr)
 	radf.WriteString("skyfunc glow skyglow 0 0 4 1 1 1 0\n")
 	radf.WriteString("skyglow source sky 0 0 4 0 0 1 180\n")
 }
