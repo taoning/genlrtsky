@@ -39,9 +39,7 @@ jobs:
             ${{ runner.os }}-go-
       
       - name: Build
-        run: GOOS=${{ matrix.platform }} GOARCH=amd64 go build -ldflags "-s -w" -o genlrtsky{{ matrix.extension }}
-        env:
-          GO111MODULE: on
+        run: go build -ldflags "-s -w" -o genlrtsky{{ matrix.extension }}
 
       - name: Zip the artifact
         run: |
