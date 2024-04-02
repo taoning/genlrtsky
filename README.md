@@ -7,6 +7,9 @@ The program outputs a sky defined by a Radiance hyperspectra (.hsr) fisheye imag
 1. [libradtran](https://www.libradtran.org/doku.php?id=start)
 2. [Optical properties of clouds and OPAC aerosol in netcdf format.](https://www.libradtran.org/doku.php?id=download)
 
+## Download
+Download the executable for your platform on the release page.
+
 ## Usage
 ```
 genlrtsky month day hour minute [options]
@@ -56,6 +59,14 @@ For example, we can include `-d 0.15` flag to scale the profile to 0.15.
 
 ## Examples
 
-Generate a winter solstice noon clear sky with `continental_average` standard aerosol profile
-`genlrtsky 12 21 12 0 -a 37 -o 122 -m 120 -s cc`
+Generate a winter solstice noon clear sky in northern california with `continental_clean` standard aerosol profile:
 
+```
+genlrtsky 12 21 12 0 -a 37 -o 122 -m 120 -s cc
+```
+
+## Build
+
+Make sure you have [golang](https://go.dev) install on your machine.
+Clone or download the repository, run `go build` inside it should give you `genlrtsky`. 
+Run `go build -ldflags "-s -w"` for an optimized build.
