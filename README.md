@@ -8,41 +8,32 @@ The program outputs a sky defined by a Radiance hyperspectra (.hsr) fisheye imag
 2. [Optical properties of clouds and OPAC aerosol in netcdf format.](https://www.libradtran.org/doku.php?id=download)
 
 ## Usage
+```
+genlrtsky month day hour minute [options]
+```
+
 The command-line interface of `genlrtsky` follows the patterns of other
 sky generators in Radiance, such as `gensky` and `gendaylit`.
 The interface is four positional arguments followed by optional arguments:
 
-Usage: genlrtsky month day hour minute [options]
+### Options
+  - `-a float` Latitude, north positive (default 37)
+  - `-c float` Cloud cover 0-1
+  - `-d float` Aerosol optical depth
+  - `-g float` Albedo (default 0.2)
+  - `-m int` Standard meridian, west positive (default 120)
+  - `-o float` Longitude, west positive (default 122)
+  - `-p string` Output file prefix (default "default_")
+  - `-quiet` Quiet mode
+  - `-s string` Standard aerosol profile name (default "ca")
+  - `-version` Print version
+  - `-y int` Year (default 2003)
 
-Options:
-  -a float
-        Latitude, north positive (default 37)
-  -c float
-        Cloud cover 0-1
-  -d float
-        Aerosol optical depth
-  -g float
-        Albedo (default 0.2)
-  -m int
-        Standard meridian, west positive (default 120)
-  -o float
-        Longitude, west positive (default 122)
-  -p string
-        Output file prefix (default "default_")
-  -quiet
-        Quiet mode
-  -s string
-        Standard aerosol profile name (default "ca")
-  -version
-        Print version
-  -y int
-        Year (default 2003)
-
-Positional arguments:
-  month  Specify the month (1-12)
-  day    Specify the day (1-31)
-  hour   Specify the hour (0-23)
-  minute Specify the minute (0-59)
+### Positional arguments:
+  - `month`  Specify the month (1-12)
+  - `day`    Specify the day (1-31)
+  - `hour`   Specify the hour (0-23)
+  - `minute` Specify the minute (0-59)
 
 ### Aerosol
 We uses the standard aerosol profiles provided by the OPAC packages.
