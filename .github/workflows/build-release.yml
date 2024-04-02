@@ -14,7 +14,13 @@ jobs:
     strategy:
       matrix:
         go-version: [1.22.x]
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          os: ubuntu-latest
+          extension: ""
+          os: macos-latest
+          extension: ""
+          os: windows-latest
+          extension: ".exe"
     steps:
       - name: Check out code
         uses: actions/checkout@v3
