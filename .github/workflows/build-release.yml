@@ -42,6 +42,7 @@ jobs:
         run: go build
 
       - name: Zip the artifact
+        shell: bash
         run: |
           if [ "${{ runner.os }}" = "Windows-latest" ]; then
             7z a genlrtsky-${{ runner.os }}-amd64.zip genlrtsky.exe
