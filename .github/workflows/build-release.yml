@@ -44,7 +44,7 @@ jobs:
       - name: Zip the artifact
         shell: bash
         run: |
-          if [ "${{ runner.os }}" = "Windows-latest" ]; then
+          if [ "${{ runner.os }}" = "Windows" ]; then
             7z a genlrtsky-${{ runner.os }}-amd64.zip genlrtsky.exe
           else
             zip genlrtsky-${{ runner.os }}-amd64.zip genlrtsky
