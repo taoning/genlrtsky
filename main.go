@@ -28,9 +28,10 @@ const (
 )
 
 type SimulationControl struct {
-	Prefix  string
-	Version bool
-	Quiet   bool
+	OutName    string
+	Version    bool
+	NumThreads int
+	Quiet      bool
 }
 
 type InputParams struct {
@@ -381,10 +382,11 @@ func setupFlags(simctrl *SimulationControl, input *InputParams, dateTime *Dateti
 	flag.Float64Var(&input.GroundAlbedo, "g", 0.2, "Albedo")
 	flag.StringVar(&input.AerosolProfile, "s", "ca", "Standard aerosol profile name")
 	flag.Float64Var(&input.AerosolOpticalDepth, "d", 0.0, "Aerosol optical depth")
-	flag.StringVar(&simctrl.Prefix, "p", "default_", "Output file prefix")
+	flag.StringVar(&simctrl.OutName, "p", "out", "Output file prefix")
 	flag.BoolVar(&simctrl.Version, "version", false, "Print version")
 	flag.Float64Var(&input.CloudCover, "c", 0.0, "Cloud cover 0-1")
 	flag.BoolVar(&simctrl.Quiet, "quiet", false, "Quiet mode")
+	flag.IntVar(&simctrl.NumThreads, "n", 1, "Number of threads")
 
 	// Customize the usage function
 	flag.Usage = func() {
@@ -488,8 +490,8 @@ mc_vroom on
 		input.Quiet = true
 	}
 
-	outRad := simctrl.Prefix + "sky.rad"
-	outHsr := simctrl.Prefix + "sky.hsr"
+	outRad := simctrl.OutName + ".rad"
+	outHsr := simctrl.OutName + ".hsr"
 
 	hsrf, err := os.Create(outHsr)
 	handleError(err)
@@ -530,9 +532,9 @@ mc_vroom on
 		defer cloudFile.Close()
 		cloudFile.WriteString(`
 		5.0	0	0
-		4.0	0.25	10.0
+		4.0	0.	0.0
 		3.0	0.25	10.0
-		2.0	0.25	10.0
+		2.0	0.	0.0
 		1.0	0	0.0
 		0.0	0	0.0`)
 		input.CloudFile = cloudFile.Name()
@@ -541,7 +543,7 @@ mc_vroom on
 	wg := &sync.WaitGroup{}
 
 	// Limit the number of concurrent goroutines to the number of processor cores
-	numCores := runtime.NumCPU()
+	numCores := min(simctrl.NumThreads, runtime.NumCPU())
 	concurrencyLimit := make(chan struct{}, numCores) // Semaphore-like channel
 
 	for y := 0; y < YRES; y++ {
