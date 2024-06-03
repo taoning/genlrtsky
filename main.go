@@ -167,7 +167,7 @@ func parseAerosolProfile(input *InputParams) error {
 }
 
 func printVersion() {
-	fmt.Println("genlrtsky v0.1")
+	fmt.Println("genlrtsky v0.0.2")
 
 	cmd := exec.Command("uvspec", "-v")
 
@@ -344,22 +344,20 @@ func getSunDirection(input *InputParams) [3]float64 {
 	return sundir
 }
 
-func parsePositionalArgs(datetime *Datetime) {
+func parsePositionalArgs(datetime *Datetime, args []string) error {
 	// Check and get positional arguments before any optional flags.
 	positionalArgs := []string{}
-	for _, arg := range os.Args[1:] { // Skipping the program name.
+	for _, arg := range args { // Skipping the program name.
 		if strings.HasPrefix(arg, "-") {
 			break // Stop on the first flag.
 		}
 		positionalArgs = append(positionalArgs, arg)
 	}
 
-	// Make sure we got the first three positional arguments.
-	if len(positionalArgs) < 4 {
+	if len(positionalArgs) != 4 {
 		flag.Usage()
-		os.Exit(0)
+		return errors.New("Invalid number of positional arguments")
 	}
-
 	month, err := parseMonth(positionalArgs[0])
 	handleError(err)
 	day, err := parseDay(positionalArgs[1])
@@ -372,6 +370,7 @@ func parsePositionalArgs(datetime *Datetime) {
 	datetime.Day = day
 	datetime.Hour = hour
 	datetime.Minute = minute
+	return err
 }
 
 func setupFlags(simctrl *SimulationControl, input *InputParams, dateTime *Datetime, location *Location) {
@@ -392,11 +391,6 @@ func setupFlags(simctrl *SimulationControl, input *InputParams, dateTime *Dateti
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: genlrtsky month day hour minute [options]\n")
 		flag.PrintDefaults()
-		fmt.Fprintln(os.Stderr, "\nPositional arguments:")
-		fmt.Fprintln(os.Stderr, "  month  Specify the month (1-12)")
-		fmt.Fprintln(os.Stderr, "  day    Specify the day (1-31)")
-		fmt.Fprintln(os.Stderr, "  hour   Specify the hour (0-23)")
-		fmt.Fprintln(os.Stderr, "  minute Specify the minute (0-59)")
 	}
 }
 
@@ -469,14 +463,27 @@ mc_vroom on
 	simctrl := SimulationControl{}
 
 	setupFlags(&simctrl, &input, &dateTime, &location)
-	parsePositionalArgs(&dateTime)
 
-	os.Args = os.Args[4:]
-	flag.Parse()
+	if len(os.Args) < 2 {
+		flag.Usage()
+		os.Exit(0)
+	}
 
-	if simctrl.Version {
+	if os.Args[1] == "-version" {
 		printVersion()
 		os.Exit(0)
+	}
+
+	if len(os.Args) < 5 {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	positionalArgs := os.Args[1:5]
+	os.Args = os.Args[4:]
+	flag.Parse()
+	if err = parsePositionalArgs(&dateTime, positionalArgs); err != nil {
+		handleError(err)
 	}
 
 	err = parseAerosolProfile(&input)
