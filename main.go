@@ -19,12 +19,12 @@ import (
 )
 
 const (
-	NSSAMP           = 20
-	WVLSPAN          = 400 // Wavelength span in nm 780 - 380
-	XRES             = 32
-	YRES             = 32
-	PROGRESSBARWIDTH = 50
-	TOTALSTEPS       = YRES * XRES
+	NSSAMP           int = 20
+	WVLSPAN              = 400 // Wavelength span in nm 780 - 380
+	XRES                 = 32
+	YRES                 = 32
+	PROGRESSBARWIDTH     = 50
+	TOTALSTEPS           = YRES * XRES
 )
 
 type SimulationControl struct {
@@ -297,6 +297,7 @@ func compute(x, y int, input InputParams, tmpl *template.Template) ([NSSAMP + 1]
 	panicError(err)
 	inputStr := templateBuffer.String()
 
+	// fmt.Println(inputStr)
 	tdir, err := os.MkdirTemp("", "")
 	panicError(err)
 	defer os.RemoveAll(tdir)
@@ -539,7 +540,7 @@ mc_vroom on
 		defer cloudFile.Close()
 		cloudFile.WriteString(`
 		5.0	0	0
-		4.0	0.	0.0
+		4.0	0.25	10.0
 		3.0	0.25	10.0
 		2.0	0.	0.0
 		1.0	0	0.0
