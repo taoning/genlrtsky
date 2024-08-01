@@ -287,8 +287,13 @@ func worker(x, y int, input InputParams, tmpl *template.Template, wg *sync.WaitG
 
 func compute(x, y int, input InputParams, tmpl *template.Template) ([NSSAMP + 1]uint8, error) {
 
+	scolor := [20]float64{}
 	loc0, loc1 := pix2loc(XRES, YRES, x, y)
 	umu, phi := viewray(loc0, loc1)
+	if umu > 0 {
+		sclr := scolor2scolr(scolor, NSSAMP)
+		return sclr, nil
+	}
 
 	var templateBuffer bytes.Buffer
 	input.CosTheta = umu
@@ -317,7 +322,6 @@ func compute(x, y int, input InputParams, tmpl *template.Template) ([NSSAMP + 1]
 	res, err := os.ReadFile(filepath.Join(tdir, "mc.rad.spc"))
 	panicError(err)
 	rows := strings.Split(string(res), "\n")
-	scolor := [20]float64{}
 	for i, row := range rows {
 		if row == "" {
 			continue
@@ -402,6 +406,19 @@ func getLibPathOrExit() string {
 		os.Exit(1)
 	}
 	return libPath
+}
+
+func average(numbers []float64) float64 {
+	if len(numbers) == 0 {
+		return 0
+	}
+
+	sum := 0.0
+	for _, num := range numbers {
+		sum += num
+	}
+
+	return sum / float64(len(numbers))
 }
 
 func displayProgressBar(completedSteps int32, totalSteps int, progressBarWidth int) {
@@ -604,7 +621,7 @@ mc_vroom on
 	err = tmpl.Execute(&templateBuffer, input)
 	panicError(err)
 	inputStr := templateBuffer.String()
-	inputStr += "\n" + "output_user edir"
+	inputStr += "\n" + "output_user edir edn"
 	inputStr += "\n" + "rte_solver disort"
 
 	tdir, err := os.MkdirTemp("", "")
@@ -624,13 +641,29 @@ mc_vroom on
 	err = cmd.Run()
 	panicError(err)
 	sun_radiance := [NSSAMP]float64{}
-	for idx, value := range strings.Split(strings.Trim(out.String(), " \n"), "\n") {
-		sun_radiance[idx], err = strconv.ParseFloat(strings.TrimSpace(value), 64)
+	diffuse := .0
+	for idx, row := range strings.Split(strings.Trim(out.String(), " \n"), "\n") {
+		var dif float64
+		values := strings.Fields(row)
+		if len(values) != 2 {
+			fmt.Fprintf(os.Stderr, "Invalid format")
+			continue
+		}
+		sun_radiance[idx], err = strconv.ParseFloat(strings.TrimSpace(values[0]), 64)
+		dif, err = strconv.ParseFloat(strings.TrimSpace(values[1]), 64)
+		diffuse += dif
 		panicError(err)
 	}
+	diffuse *= WVLSPAN / 1000.0 / float64(NSSAMP)
+	dir_sum := 0.0
+	for _, num := range sun_radiance {
+		dir_sum += num
+	}
+	int_dir := dir_sum * WVLSPAN / 1000.0 / float64(NSSAMP)
 
 	sundir := getSunDirection(&input)
 	writeHsr(hsrf, &hsr)
+	groundRadiance := (int_dir*sundir[2] + diffuse) * input.GroundAlbedo / math.Pi
 
 	fmt.Fprintf(radf, "# Latitude: %f, Longitude: %f, TimeZone: %d\n", location.Latitude, location.Longitude, location.StandardMeridian)
 	fmt.Fprintf(radf, "# Date time: %d-%d-%d %d:%02d\n", dateTime.Year, dateTime.Month, dateTime.Day, dateTime.Hour, dateTime.Minute)
@@ -643,13 +676,17 @@ mc_vroom on
 	if input.CloudCover > 0 {
 		fmt.Fprintf(radf, "# Cloud cover: %f\n", input.CloudCover)
 	}
-	radf.WriteString("void spectrum sun\n0\n0\n22 380 780 ")
-	for _, value := range sun_radiance {
-		fmt.Fprintf(radf, "%.1f ", value*WVLSPAN/6.7967e-5/1000/sundir[2])
+	if sundir[2] > 0 {
+		radf.WriteString("void spectrum sun\n0\n0\n22 380 780 ")
+		for _, value := range sun_radiance {
+			fmt.Fprintf(radf, "%.1f ", value*WVLSPAN/6.7967e-5/1000/sundir[2])
+		}
+		radf.WriteString("\n\nsun light solar\n0\n0\n3 1 1 1\n\n")
+		fmt.Fprintf(radf, "solar source sun\n0\n0\n4 %f %f %f 0.533\n\n", sundir[0], sundir[1], sundir[2])
 	}
-	radf.WriteString("\n\nsun light solar\n0\n0\n3 1 1 1\n\n")
-	fmt.Fprintf(radf, "solar source sun\n0\n0\n4 %f %f %f 0.533\n\n", sundir[0], sundir[1], sundir[2])
 	fmt.Fprintf(radf, "void specpict skyfunc 9 noop %s fisheye.cal fish_u fish_v -rx 90 -rz 90 0 0\n", outHsr)
 	radf.WriteString("skyfunc glow skyglow 0 0 4 1 1 1 0\n")
 	radf.WriteString("skyglow source sky 0 0 4 0 0 1 180\n")
+	fmt.Fprintf(radf, "void glow groundglow 0 0 4 %f %f %f 0\n", groundRadiance, groundRadiance, groundRadiance)
+	radf.WriteString("groundglow source groundplane 0 0 4 0 0 -1 180\n")
 }
