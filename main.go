@@ -299,12 +299,18 @@ func compute(x, y int, input InputParams, tmpl *template.Template) ([NSSAMP + 1]
 	input.CosTheta = umu
 	input.Phi = phi
 	err := tmpl.Execute(&templateBuffer, input)
-	panicError(err)
+	// panicError(err)
+	if err != nil {
+		return [NSSAMP + 1]uint8{}, fmt.Errorf("template execution failed: %w", err)
+	}
 	inputStr := templateBuffer.String()
 
 	// fmt.Println(inputStr)
 	tdir, err := os.MkdirTemp("", "")
-	panicError(err)
+	if err != nil {
+		return [NSSAMP + 1]uint8{}, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	// panicError(err)
 	defer os.RemoveAll(tdir)
 
 	// fmt.Println(inputStr)
@@ -318,9 +324,15 @@ func compute(x, y int, input InputParams, tmpl *template.Template) ([NSSAMP + 1]
 	cmd.Stdout = &out
 
 	err = cmd.Run()
-	panicError(err)
+	if err != nil {
+		return [NSSAMP + 1]uint8{}, fmt.Errorf("uvspec command failed (exit status %v): %s", err, stderr.String())
+	}
+	// panicError(err)
 	res, err := os.ReadFile(filepath.Join(tdir, "mc.rad.spc"))
-	panicError(err)
+	// panicError(err)
+	if err != nil {
+		return [NSSAMP + 1]uint8{}, fmt.Errorf("failed to read output file: %w", err)
+	}
 	rows := strings.Split(string(res), "\n")
 	for i, row := range rows {
 		if row == "" {
@@ -328,7 +340,10 @@ func compute(x, y int, input InputParams, tmpl *template.Template) ([NSSAMP + 1]
 		}
 		fields := strings.Fields(row)
 		value, err := strconv.ParseFloat(fields[4], 64)
-		panicError(err)
+		// panicError(err)
+		if err != nil {
+			return [NSSAMP + 1]uint8{}, fmt.Errorf("failed to parse value in row %d: %w", i, err)
+		}
 		scolor[i] = value * WVLSPAN / 1000 // mW to W
 	}
 	sclr := scolor2scolr(scolor, NSSAMP)
